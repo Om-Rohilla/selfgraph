@@ -20,7 +20,6 @@ from ._serde import (
     L_PROFILE,
     L_SOURCE_VERSION,
     R_HAS_CHUNK,
-    _loads,
     decode_entity,
     from_iso,
     preference_edge_type,
@@ -718,9 +717,9 @@ def _quotable(version: dict | None, as_of: AsOf | None) -> bool:
         return replaced is None or (as_of is not None and replaced > as_of.valid)
     return not any(
         from_iso(r["at"]) <= as_of.valid
-        and from_iso(r["known_at"]) <= as_of.known
+        and _ops._known_by(from_iso(r["known_at"]), as_of.known)
         and not (r["until"] and from_iso(r["until"]) <= as_of.known)
-        for r in _loads(version.get("replacements_json"), [])
+        for r in _ops._source_replacements(version)
     )
 
 

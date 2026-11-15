@@ -328,3 +328,45 @@ def test_known_at_quotes_a_passage_only_once_its_evidence_was_recorded():
     run(g.insert.text("Ann met Bob.", source_id="note"))
     assert "Ann met Bob." in run(g.retrieve("Bob")).context
     assert "Ann met Bob." not in run(g.retrieve("Bob", known_at=learned)).context
+
+
+@pytest.fixture
+def legacy_replaced_source():
+    g = graph()
+    old = "Ann works at Acme in Berlin."
+    newer = "Ann works at Acme in Paris."
+    run(g.insert.text(old, source_id="note", event_time=utc(2020)))
+    [original] = run(g.store.match_nodes(g.namespace, "SourceVersion"))
+    run(g.insert.text(newer, source_id="note", replace_source=True, event_time=utc(2021)))
+    replaced = run(g.store.get_node(g.namespace, "SourceVersion", original["id"]))
+    run(g.store.upsert_node(g.namespace, "SourceVersion", original["id"], {**replaced, "replacements_json": None}))
+    return g, old, newer
+
+
+def test_known_at_honors_source_replacements_written_before_replacement_history(legacy_replaced_source):
+    g, old, newer = legacy_replaced_source
+    learned = instant()
+
+    def quoted(valid, **kwargs):
+        return run(g.retrieve("Ann Acme Berlin Paris", as_of=valid, **kwargs)).context.splitlines()
+
+    assert old in quoted(utc(2020), known_at=learned)
+    assert old not in quoted(utc(2022))
+    assert old not in quoted(utc(2022), known_at=learned)
+    assert newer in quoted(utc(2022), known_at=learned)
+
+
+def test_known_at_preserves_legacy_replacement_on_restore(legacy_replaced_source):
+    g, old, newer = legacy_replaced_source
+    learned = instant()
+    run(g.insert.text(old, source_id="note", replace_source=True))
+
+    def quoted(known):
+        return run(g.retrieve("Ann Acme Berlin Paris", as_of=utc(2099), known_at=known)).context.splitlines()
+
+    before = quoted(learned)
+    assert old not in before
+    assert newer in before
+    after = quoted(instant())
+    assert old in after
+    assert newer not in after

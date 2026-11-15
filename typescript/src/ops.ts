@@ -2756,6 +2756,22 @@ export async function sourceTargets(runner: Runner, ns: string, sourceId: string
 }
 
 /**
+ * Read replacement history, including an active legacy mark with unknown write time.
+ *
+ * @param version (Props): the stored source version.
+ * @return (Array<Record<string, string | null>>): the replacement entries.
+ */
+export function sourceReplacements(version: Props): Array<Record<string, string | null>> {
+  const history = loads<Array<Record<string, string | null>>>(version.replacements_json, []);
+  if (!history.length && typeof version.replaced_at === "string") {
+    return [
+      { at: version.replaced_at, by: (version.replaced_by as string | undefined) ?? null, known_at: null, until: null },
+    ];
+  }
+  return history;
+}
+
+/**
  * Make one version of a source replace its others: mark them replaced_at and replaced_by, so retrieval stops quoting
  * them, and retire the current relations among some candidates whose every evidence record is from one of them, as a
  * newer fact retires one: invalidated_at is set and nothing is deleted. Each version keeps its replacements, with when
@@ -2828,7 +2844,7 @@ export async function replaceSource(
     L_SOURCE_VERSION,
   )) {
     const replacedBy = row.replaced_by ?? null;
-    const history = loads<Array<Record<string, string | null>>>(row.replacements_json, []);
+    const history = sourceReplacements(row);
     if (row.id === version && replacedBy !== null) {
       history.at(-1)!.until = knownAt;
       marks.push([

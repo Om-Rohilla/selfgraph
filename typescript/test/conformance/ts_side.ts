@@ -296,6 +296,31 @@ export async function write(graph: SelfGraph): Promise<Record<string, unknown>> 
   return out;
 }
 
+/**
+ * Read passages as they were known before restoring a legacy source version.
+ *
+ * @param graph (SelfGraph): the open graph.
+ * @return (Promise<string[]>): the passages visible at that point.
+ */
+export async function legacyPassages(graph: SelfGraph): Promise<string[]> {
+  const old = "Grace Hopper wrote COBOL in Berlin.";
+  const newer = "Grace Hopper wrote COBOL in Paris.";
+  const sourceId = "legacy-notes";
+  await graph.insert.text(old, { source_id: sourceId, event_time: "2020-01-01" });
+  const [original] = await graph.store.matchNodes(graph.namespace, "SourceVersion", {
+    equals: { source_id: sourceId },
+  });
+  await graph.insert.text(newer, { source_id: sourceId, event_time: "2021-01-01", replace_source: true });
+  const id = original!.id as string;
+  const replaced = await graph.store.getNode(graph.namespace, "SourceVersion", id);
+  await graph.store.upsertNode(graph.namespace, "SourceVersion", id, { ...replaced, replacements_json: null });
+  const known = new Date();
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  await graph.insert.text(old, { source_id: sourceId, replace_source: true });
+  const result = await graph.retrieve("Grace Hopper COBOL Berlin Paris", { as_of: "2022-01-01", known_at: known });
+  return result.context.split("\n").filter((line) => line === old || line === newer);
+}
+
 async function allEvidence(list: (cursor: string | null) => Promise<Page<Evidence>>): Promise<Evidence[]> {
   const out: Evidence[] = [];
   let cursor: string | null = null;

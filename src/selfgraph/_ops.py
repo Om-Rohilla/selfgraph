@@ -2613,6 +2613,18 @@ async def source_targets(runner: Any, ns: str, source_id: str) -> set[str]:
     return {row["target_id"] for row in await _paged(fetch, page=_BATCH)}
 
 
+def _source_replacements(version: dict) -> list[dict]:
+    """Read replacement history, including an active legacy mark with unknown write time.
+
+    @param version (dict): the stored source version.
+    @return (list[dict]): the replacement entries.
+    """
+    history = _loads(version.get("replacements_json"), [])
+    if not history and version.get("replaced_at") is not None:
+        return [{"at": version["replaced_at"], "by": version.get("replaced_by"), "known_at": None, "until": None}]
+    return history
+
+
 async def replace_source(
     runner: Any, ns: str, source_id: str, version: str, stale: Iterable[str], at: datetime, known: datetime
 ) -> tuple[list[str], list[InsertWarning]]:
@@ -2667,7 +2679,7 @@ async def replace_source(
     known_at = to_iso(known)
     marks = []
     for row in await runner.child_nodes(ns, L_SOURCE, _ids.source_node_id(source_id), R_HAS_VERSION, L_SOURCE_VERSION):
-        history = _loads(row.get("replacements_json"), [])
+        history = _source_replacements(row)
         if row["id"] == version and row.get("replaced_by") is not None:
             history[-1]["until"] = known_at
             marks.append(

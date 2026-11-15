@@ -120,6 +120,10 @@ With `known_at`, the `as_of` rules apply only to what was written by then:
 | Entities and decisions | Their `created_at` is at or before `known_at`. |
 | Passages | Their source version was stored by `known_at`, the evidence linking it to the entity was recorded by then, and a [replacement](inserting.md#replacing-a-source) counts only while it was in force then. |
 
+Source replacements written before replacement history was stored have no
+knowledge timestamp. Historical reads treat them as known and use their stored
+effective date until the replacement is undone.
+
 `check_answerable` takes `known_at` too. Changes that keep no record are not
 undone: a delete, a merge or unmerge, a decay score, a decision update, or an
 entity's changed properties read as they are now.

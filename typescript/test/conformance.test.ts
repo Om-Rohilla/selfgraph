@@ -7,14 +7,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { KuzuStore, SelfGraph } from "../src/index.js";
-import { conformanceStore, dump, schemaWarnings, write } from "./conformance/ts_side.js";
+import { conformanceStore, dump, legacyPassages, schemaWarnings, write } from "./conformance/ts_side.js";
 import { reachable, selectedStores, tempKuzu, uniqueNs } from "./helpers.js";
 
 const PY = process.env.SELFGRAPH_PY;
 const SCRIPT = fileURLToPath(new URL("./conformance/py_side.py", import.meta.url));
 const KUZU = tempKuzu("selfgraph-conf-");
 
-function py(cmd: "write" | "dump" | "schema", store: string, ns: string): unknown {
+function py(cmd: "write" | "dump" | "schema" | "legacy", store: string, ns: string): unknown {
   const out = execFileSync(PY!, [SCRIPT, cmd, store, ns, KUZU], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out);
 }
@@ -94,6 +94,14 @@ describe.skipIf(!PY)("cross-language conformance with the Python SDK", () => {
   });
 
   for (const { name: store } of specs) {
+    it.skipIf(!live.get(store))(`${store}: both SDKs preserve legacy replacement history on restore`, async () => {
+      const expected = ["Grace Hopper wrote COBOL in Paris."];
+      const pyPassages = py("legacy", store, uniqueNs("legacy_py"));
+      const tsPassages = await ts(store, uniqueNs("legacy_ts"), legacyPassages);
+      expect(pyPassages).toEqual(expected);
+      expect(tsPassages).toEqual(pyPassages);
+    });
+
     it.skipIf(!live.get(store))(
       `${store}: Python and TypeScript read, write, and agree on the same graph`,
       async () => {

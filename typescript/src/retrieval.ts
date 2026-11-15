@@ -3,7 +3,6 @@ import { loadTokenizer } from "./chunking.js";
 import { ValidationError } from "./errors.js";
 import { normalizeText, profileId } from "./ids.js";
 import { casefold } from "./internal/casefold.js";
-import { loads } from "./internal/json.js";
 import { comparePy, cpLen, NON_ASCII, pyFloatRepr, pyRepr, pyStr, pyStrip } from "./internal/py.js";
 import { epochMicros, fromIso } from "./internal/time.js";
 import {
@@ -742,12 +741,14 @@ function quotable(version: Props | undefined, asOf: ops.AsOf | null): boolean {
     return replaced == null || (asOf !== null && epochMicros(replaced) > epochMicros(asOf.valid));
   }
   const known = epochMicros(asOf.known);
-  return !loads<Array<Record<string, string | null>>>(version.replacements_json, []).some(
-    (r) =>
-      epochMicros(fromIso(r.at)!) <= epochMicros(asOf.valid) &&
-      epochMicros(fromIso(r.known_at)!) <= known &&
-      !(r.until && epochMicros(fromIso(r.until)!) <= known),
-  );
+  return !ops
+    .sourceReplacements(version)
+    .some(
+      (r) =>
+        epochMicros(fromIso(r.at)!) <= epochMicros(asOf.valid) &&
+        ops.knownBy(fromIso(r.known_at), asOf.known) &&
+        !(r.until && epochMicros(fromIso(r.until)!) <= known),
+    );
 }
 
 async function collectPassages(

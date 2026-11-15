@@ -483,6 +483,51 @@ function suite(spec: StoreSpec): void {
     expect(await quoted(await instant())).toEqual([berlin]);
   });
 
+  it("handles source replacements stored before known_at", async () => {
+    const g = await graph();
+    const old = "Ann works at Acme in Berlin.";
+    const newer = "Ann works at Acme in Paris.";
+    await g.insert.text(old, { source_id: "note", event_time: at(2020) });
+    const [original] = await g.store.matchNodes(g.namespace, "SourceVersion");
+    await g.insert.text(newer, { source_id: "note", replace_source: true, event_time: at(2021) });
+    const replaced = (await g.store.getNode(g.namespace, "SourceVersion", original!.id as string))!;
+    await g.store.upsertNode(g.namespace, "SourceVersion", original!.id as string, {
+      ...replaced,
+      replacements_json: null,
+    });
+    const learned = await instant();
+    const read = async (as_of: Date, known_at?: Date) =>
+      (await g.retrieve("Ann Acme Berlin Paris", { as_of, known_at })).context.split("\n");
+
+    expect(await read(at(2020), learned)).toContain(old);
+    expect(await read(at(2022))).not.toContain(old);
+    expect(await read(at(2022), learned)).not.toContain(old);
+    expect(await read(at(2022), learned)).toContain(newer);
+  });
+
+  it("can restore a source version replaced before known_at", async () => {
+    const g = await graph();
+    const old = "Ann works at Acme in Berlin.";
+    const newer = "Ann works at Acme in Paris.";
+    await g.insert.text(old, { source_id: "note" });
+    const [original] = await g.store.matchNodes(g.namespace, "SourceVersion");
+    await g.insert.text(newer, { source_id: "note", replace_source: true });
+    const replaced = (await g.store.getNode(g.namespace, "SourceVersion", original!.id as string))!;
+    await g.store.upsertNode(g.namespace, "SourceVersion", original!.id as string, {
+      ...replaced,
+      replacements_json: null,
+    });
+    const learned = await instant();
+    await g.insert.text(old, { source_id: "note", replace_source: true });
+
+    const historical = (await g.retrieve("Ann Acme Berlin Paris", { as_of: at(2099), known_at: learned })).context;
+    expect(historical.split("\n")).not.toContain(old);
+    expect(historical.split("\n")).toContain(newer);
+    const current = (await g.retrieve("Ann Acme Berlin Paris", { known_at: await instant() })).context;
+    expect(current.split("\n")).toContain(old);
+    expect(current.split("\n")).not.toContain(newer);
+  });
+
   it("known_at shows the certification in force then", async () => {
     const g = open();
     await g.insert.facts({ entities: PEOPLE });

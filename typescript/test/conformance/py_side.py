@@ -295,6 +295,27 @@ async def write(graph):
     return out
 
 
+async def legacy_passages(graph):
+    """Read passages as they were known before restoring a legacy source version.
+
+    @param graph (SelfGraph): the open graph.
+    @return (list[str]): the passages visible at that point.
+    """
+    old, new = "Grace Hopper wrote COBOL in Berlin.", "Grace Hopper wrote COBOL in Paris."
+    source_id = "legacy-notes"
+    await graph.insert.text(old, source_id=source_id, event_time="2020-01-01")
+    [original] = await graph.store.match_nodes(graph.namespace, "SourceVersion", equals={"source_id": source_id})
+    await graph.insert.text(new, source_id=source_id, event_time="2021-01-01", replace_source=True)
+    replaced = await graph.store.get_node(graph.namespace, "SourceVersion", original["id"])
+    await graph.store.upsert_node(
+        graph.namespace, "SourceVersion", original["id"], {**replaced, "replacements_json": None}
+    )
+    known = datetime.now(timezone.utc)
+    await graph.insert.text(old, source_id=source_id, replace_source=True)
+    result = await graph.retrieve("Grace Hopper COBOL Berlin Paris", as_of="2022-01-01", known_at=known)
+    return [line for line in result.context.splitlines() if line in (old, new)]
+
+
 async def all_evidence(list_fn, oid):
     """Read every page of an entity's or relation's evidence, two items at a time.
 
@@ -391,7 +412,10 @@ async def main():
     graph = SelfGraph(store=STORES[store_name](kuzu_path), namespace=ns)
     try:
         await graph.initialize()
-        result = await write(graph) if cmd == "write" else await dump(graph, ns)
+        if cmd == "legacy":
+            result = await legacy_passages(graph)
+        else:
+            result = await write(graph) if cmd == "write" else await dump(graph, ns)
     finally:
         await graph.close()
     json.dump(result, sys.stdout, sort_keys=True, ensure_ascii=False)
