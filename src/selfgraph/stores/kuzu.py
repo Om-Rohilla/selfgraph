@@ -150,6 +150,8 @@ class KuzuStore(AutoCommitStore):
         if max_db_size is not None and (type(max_db_size) is not int or max_db_size < 1):
             raise ValidationError(f"max_db_size must be a positive integer of bytes, got {max_db_size!r}")
         path = os.path.expanduser(path)
+        if path not in ("", ":memory:"):
+            path = os.path.abspath(path)
         if path not in _DATABASES:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             try:

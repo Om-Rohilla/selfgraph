@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from helpers import NEO4J_URI, DriverError, make_store, run, store_settings
 
-from selfgraph import KuzuStore, Neo4jStore, Schema, SelfGraph
+from selfgraph import KuzuStore, Neo4jStore, Schema, SelfGraph, SyncSelfGraph
 from selfgraph._serde import LABELS
 from selfgraph.errors import StoreError, TransientError, ValidationError, surface_hint
 from selfgraph.models import CypherResult
@@ -241,6 +241,23 @@ def test_kuzu_paths_settings_and_errors(caplog, monkeypatch, tmp_path):
     for uri in ("graph.kuzu", str(tmp_path / "db")):
         with pytest.raises(ValidationError, match='this looks like a Kuzu path; pass store="kuzu"'):
             build_graph(GraphSettings(uri=uri))
+
+
+def test_kuzu_relative_paths_follow_the_directory_at_construction(monkeypatch, tmp_path):
+    pytest.importorskip("kuzu")
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.chdir(tmp_path)
+    with SyncSelfGraph(KuzuStore("graph.kuzu")) as first:
+        jane = first.entities.create("Jane", "Person")
+        monkeypatch.chdir(other)
+        with SyncSelfGraph(KuzuStore("graph.kuzu")) as second:
+            assert second.entities.get(jane.id) is None
+            bob = second.entities.create("Bob", "Person")
+            assert first.entities.get(bob.id) is None
+        with SyncSelfGraph(KuzuStore(tmp_path / "graph.kuzu")) as same_file:
+            assert same_file.entities.get(jane.id) == jane
+        assert first.entities.get(jane.id) == jane
 
 
 def test_bind_params_checks_references_and_drops_unused():

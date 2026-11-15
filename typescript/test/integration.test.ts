@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -689,6 +689,48 @@ describe("store setup errors", () => {
     const neo4jRows = LABELS.map((label) => ({ type: "UNIQUENESS", labelsOrTypes: [label], properties: ["id", "ns"] }));
     expect(uniqueLabels(neo4jRows)).toEqual(new Set(LABELS));
     expect(uniqueLabels(neo4jRows.slice(1))).toEqual(new Set(LABELS.slice(1)));
+  });
+
+  it("keeps relative Kuzu paths tied to the directory at construction", async () => {
+    const cwd = process.cwd();
+    const root = mkdtempSync(join(tmpdir(), "selfgraph-cwd-"));
+    const other = join(root, "other");
+    mkdirSync(other);
+    const graphs: SelfGraph[] = [];
+    const graph = (path: string) => {
+      const g = new SelfGraph(new KuzuStore(path));
+      graphs.push(g);
+      return g;
+    };
+
+    try {
+      process.chdir(root);
+      const first = graph("graph.kuzu");
+      await first.initialize();
+      const jane = await first.entities.create("Jane", "Person");
+      const delayed = graph("graph.kuzu");
+      process.chdir(other);
+
+      const second = graph("graph.kuzu");
+      await second.initialize();
+      expect(await second.entities.get(jane.id)).toBeNull();
+      const bob = await second.entities.create("Bob", "Person");
+      expect(await first.entities.get(bob.id)).toBeNull();
+
+      await delayed.initialize();
+      expect(await delayed.entities.get(jane.id)).toEqual(jane);
+      await delayed.close();
+
+      const sameFile = graph(join(root, "graph.kuzu"));
+      await sameFile.initialize();
+      expect(await sameFile.entities.get(jane.id)).toEqual(jane);
+      await sameFile.close();
+      expect(await first.entities.get(jane.id)).toEqual(jane);
+    } finally {
+      process.chdir(cwd);
+      for (const g of graphs.reverse()) await g.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("checks store options, expands ~ in a Kuzu path, and explains lock and mmap failures", async () => {

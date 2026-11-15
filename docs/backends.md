@@ -52,7 +52,8 @@ cluster-only option that a standalone server rejects.
 
 **`KuzuStore`** needs no server.
 
-- It expands a leading `~` and creates the file's folder if needed.
+- It expands a leading `~` and creates the file's folder if needed. Relative
+  paths use the working directory at the time you construct the store.
 - With no path, it opens `selfgraph_kuzu` in the current directory.
 - Each open Kuzu database reserves 8 TB of virtual memory by default, so a
   process holding many can run out of address space. Pass `max_db_size` (a

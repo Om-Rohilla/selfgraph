@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { errorMessage, StoreError, ValidationError } from "../errors.js";
 import { Lazy } from "../internal/lazy.js";
 import { loadOptional } from "../internal/optional.js";
@@ -97,13 +97,14 @@ function normalize(value: unknown): unknown {
 }
 
 /**
- * Expand a leading ~ in a path to the home directory, as Python's os.path.expanduser does.
+ * Resolve file paths against the current directory and keep Kuzu's in-memory paths.
  *
  * @param path (string): the path.
- * @return (string): the expanded path.
+ * @return (string): the path used for opening and caching the database.
  */
-function expandHome(path: string): string {
-  return path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
+function databasePath(path: string): string {
+  if (path === "" || path === ":memory:") return path;
+  return resolve(path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path);
 }
 
 /**
@@ -239,7 +240,7 @@ export class KuzuStore extends AutoCommitStore implements GraphStore {
     if (size !== undefined && (typeof size !== "number" || !Number.isSafeInteger(size) || size < 1)) {
       throw new ValidationError(`max_db_size must be a positive integer of bytes, got ${pyRepr(size)}`);
     }
-    this.path = expandHome(path);
+    this.path = databasePath(path);
   }
 
   private async exec(query: string, params?: Record<string, unknown> | null): Promise<CypherResult> {
@@ -284,7 +285,7 @@ export class KuzuStore extends AutoCommitStore implements GraphStore {
    * @param path (string): the database path.
    */
   static async closeDatabase(path: string): Promise<void> {
-    const key = expandHome(path);
+    const key = databasePath(path);
     const db = DATABASES.get(key);
     DATABASES.delete(key);
     await db?.close?.();
