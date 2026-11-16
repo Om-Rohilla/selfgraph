@@ -392,7 +392,27 @@ async def write(graph):
     out["ent_delete"] = to_jsonable(await graph.entities.delete("thing:temp-thing"))
     out["rel_delete"] = to_jsonable(await graph.relations.delete(ids.relation_id(ZOE, "KNOWS", "person:jane-doe")))
     out["retrieval_overflow"] = await overflow(graph)
+    out["embedding_error"] = await embedding_error(graph)
     return out
+
+
+async def embedding_error(graph):
+    """Read the validation error for an entity vector shorter than the query vector.
+
+    @param graph (SelfGraph): the populated graph.
+    @return (str): the error message.
+    """
+
+    class Embedder:
+        async def embed(self, texts):
+            return [[1, 0] if text == "dimension check" else [1] for text in texts]
+
+    embedded = SelfGraph(store=graph.store, namespace=graph.namespace, embedder=Embedder(), seeds="embeddings")
+    try:
+        await embedded.retrieve("dimension check")
+    except ValidationError as exc:
+        return str(exc)
+    raise AssertionError("mismatched embedding dimensions were accepted")
 
 
 async def supersede(graph):

@@ -298,6 +298,30 @@ function suite(spec: StoreSpec): void {
     expect(() => open({ embedder: {} as never })).toThrow(/embedder must have an embed method/);
   });
 
+  it("rejects mismatched embedding dimensions before caching", async () => {
+    const query = "feline";
+    let queryVector = [1, 0];
+    let entityVector = [1];
+    const embedder: Embedder = {
+      async embed(texts) {
+        return texts.map((text) => (text === query ? queryVector : entityVector));
+      },
+    };
+    const g = open({ embedder, seeds: "embeddings" });
+    await g.entities.create("Cat", "Animal");
+    await expect(g.retrieve(query)).rejects.toThrow(
+      new ValidationError("embedder returned an entity vector of length 1 for a query vector of length 2"),
+    );
+
+    entityVector = [1, 0];
+    expect((await g.retrieve(query)).seeds.map((s) => s.id)).toEqual(["animal:cat"]);
+
+    queryVector = [1];
+    await expect(g.retrieve(query)).rejects.toThrow(
+      new ValidationError("embedder returned an entity vector of length 2 for a query vector of length 1"),
+    );
+  });
+
   it("stem singularizes -es plurals and keeps status and analysis", async () => {
     const singular: Record<string, string> = {
       addresses: "address",

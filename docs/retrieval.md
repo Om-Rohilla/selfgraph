@@ -56,7 +56,9 @@ negative `depth`, or a `k`, `max_nodes`, or `budget_tokens` below 1.
 nothing to add and reports `bm25`.
 
 **Embeddings.** Pass any object with an async `embed(texts)` that returns one
-vector per text. SelfGraph ships no embedder and stores no vectors.
+vector per text. Query and entity vectors must have the same length, or
+retrieval raises `ValidationError`. SelfGraph ships no embedder and stores no
+vectors.
 
 ```python
 class MyEmbedder:

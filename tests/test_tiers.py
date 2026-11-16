@@ -298,6 +298,32 @@ def test_embedding_seeding_fuses_with_bm25_and_embeds_each_entity_once():
         fresh_graph("tier", embedder=object())
 
 
+def test_embedding_seeding_rejects_mismatched_dimensions_before_caching():
+    query = "feline"
+    query_vector = [1.0, 0.0]
+    entity_vector = [1.0]
+
+    class MismatchedEmbedder:
+        async def embed(self, texts):
+            return [query_vector if text == query else entity_vector for text in texts]
+
+    g = fresh_graph("tier", embedder=MismatchedEmbedder(), seeds="embeddings")
+    run(g.entities.create("Cat", "Animal"))
+    with pytest.raises(
+        ValidationError, match="embedder returned an entity vector of length 1 for a query vector of length 2"
+    ):
+        run(g.retrieve(query))
+
+    entity_vector = [1.0, 0.0]
+    assert [s.id for s in run(g.retrieve(query)).seeds] == ["animal:cat"]
+
+    query_vector = [1.0]
+    with pytest.raises(
+        ValidationError, match="embedder returned an entity vector of length 2 for a query vector of length 1"
+    ):
+        run(g.retrieve(query))
+
+
 def test_from_tables_drafts_types_properties_relations_and_mappings():
     schema = Schema.from_tables(
         [

@@ -375,7 +375,33 @@ export async function write(graph: SelfGraph): Promise<Record<string, unknown>> 
   out.ent_delete = toJsonable(await graph.entities.delete("thing:temp-thing"));
   out.rel_delete = toJsonable(await graph.relations.delete(ids.relationId(ZOE, "KNOWS", "person:jane-doe")));
   out.retrieval_overflow = await overflow(graph);
+  out.embedding_error = await embeddingError(graph);
   return out;
+}
+
+/**
+ * Read the validation error for an entity vector shorter than the query vector.
+ *
+ * @param graph (SelfGraph): the populated graph.
+ * @return (Promise<string>): the error message.
+ */
+async function embeddingError(graph: SelfGraph): Promise<string> {
+  const embedded = new SelfGraph(graph.store, {
+    namespace: graph.namespace,
+    embedder: {
+      async embed(texts) {
+        return texts.map((text) => (text === "dimension check" ? [1, 0] : [1]));
+      },
+    },
+    seeds: "embeddings",
+  });
+  try {
+    await embedded.retrieve("dimension check");
+  } catch (exc) {
+    if (!(exc instanceof ValidationError)) throw exc;
+    return exc.message;
+  }
+  throw new Error("mismatched embedding dimensions were accepted");
 }
 
 /**

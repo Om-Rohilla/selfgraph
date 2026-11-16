@@ -381,8 +381,12 @@ def _cosine(a: list[float], b: list[float]) -> float:
     @param b (list[float]): the other vector.
     @return (float): the similarity.
     """
+    if len(a) != len(b):
+        raise ValidationError(
+            f"embedder returned an entity vector of length {len(b)} for a query vector of length {len(a)}"
+        )
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-    return sum(x * y for x, y in zip(a, b, strict=False)) / norm if norm else 0.0
+    return sum(x * y for x, y in zip(a, b, strict=True)) / norm if norm else 0.0
 
 
 async def _embedding_seeds(
@@ -414,10 +418,10 @@ async def _embedding_seeds(
             if len(vectors) != len(chunk):
                 raise ValidationError(f"embedder returned {len(vectors)} vectors for {len(chunk)} texts")
             found.update((eid, list(vector)) for eid, vector in zip(chunk, vectors, strict=True))
+        scored = [(e, _cosine(target, found[e.id])) for e in page]
         if len(cache) + len(stale) > _EMBED_CACHE:
             cache.clear()
         cache.update(((ns, eid), (texts[eid], found[eid])) for eid in stale)
-        scored = [(e, _cosine(target, found[e.id])) for e in page]
         best = heapq.nsmallest(k, [*best, *((e, s) for e, s in scored if s > 0)], key=_seed_rank)
     return best
 
